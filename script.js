@@ -3,13 +3,16 @@ const videoPreview = document.getElementById("videoPreview");
 const startRange = document.getElementById("startRange");
 const endRange = document.getElementById("endRange");
 const trimBtn = document.getElementById("trimBtn");
+const downloadBtn = document.getElementById("downloadBtn");
 const formatSelect = document.getElementById("formatSelect");
+const trimmedPreview = document.getElementById("trimmedPreview");
 
 let videoFile;
 let ffmpeg;
+let outputBlob = null;
 let isFFmpegLoaded = false;
 
-// Load FFmpeg properly
+// Load FFmpeg
 async function loadFFmpeg() {
   if (!isFFmpegLoaded) {
     const { createFFmpeg, fetchFile } = FFmpeg;
@@ -19,7 +22,7 @@ async function loadFFmpeg() {
   }
 }
 
-// Handle video upload
+// Handle upload
 videoUpload.addEventListener("change", (e) => {
   videoFile = e.target.files[0];
   if (!videoFile) return;
@@ -33,7 +36,7 @@ videoUpload.addEventListener("change", (e) => {
   };
 });
 
-// Handle trim + download
+// Handle Trim button
 trimBtn.addEventListener("click", async () => {
   if (!videoFile) return alert("Please upload a video first!");
 
@@ -44,43 +47,58 @@ trimBtn.addEventListener("click", async () => {
   const duration = end - start;
   const outputFormat = formatSelect.value;
 
-  // Write input file
   ffmpeg.FS("writeFile", "input.mp4", await FFmpeg.fetchFile(videoFile));
 
-  const args = [
-    "-ss", `${start}`,
-    "-t", `${duration}`,
-    "-i", "input.mp4",
-  ];
-
+  const args = ["-ss", `${start}`, "-t", `${duration}`, "-i", "input.mp4"];
   if (outputFormat === "mp3") {
     args.push("-q:a", "2", "-map", "a", "output.mp3");
   } else {
     args.push("-c", "copy", "output.mp4");
   }
 
+  trimBtn.disabled = true;
+  trimBtn.textContent = "Trimming...";
+  downloadBtn.disabled = true;
+  trimmedPreview.style.display = "none";
+
   try {
     await ffmpeg.run(...args);
 
     const outputName = outputFormat === "mp3" ? "output.mp3" : "output.mp4";
     const data = ffmpeg.FS("readFile", outputName);
-    const blob = new Blob([data.buffer], {
-      type: outputFormat === "mp3" ? "audio/mpeg" : "video/mp4"
+
+    outputBlob = new Blob([data.buffer], {
+      type: outputFormat === "mp3" ? "audio/mpeg" : "video/mp4",
     });
-    const url = URL.createObjectURL(blob);
 
-    // Create download link
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = outputName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    const previewUrl = URL.createObjectURL(outputBlob);
+    trimmedPreview.src = previewUrl;
+    trimmedPreview.style.display = "block";
 
-    // Cleanup
-    URL.revokeObjectURL(url);
+    downloadBtn.disabled = false;
+    trimBtn.textContent = "Trim";
   } catch (err) {
-    console.error("Trimming error:", err);
-    alert("Something went wrong while processing the video. Try a smaller file or shorter clip.");
+    console.error("Trim error:", err);
+    alert("Something went wrong while trimming. Try a shorter video.");
+    trimBtn.textContent = "Trim";
+  } finally {
+    trimBtn.disabled = false;
   }
+});
+
+// Handle Download button
+downloadBtn.addEventListener("click", () => {
+  if (!outputBlob) return alert("No trimmed video available!");
+
+  const outputFormat = formatSelect.value;
+  const a = document.createElement("a");
+  const url = URL.createObjectURL(outputBlob);
+
+  a.href = url;
+  a.download = outputFormat === "mp3" ? "trimmed.mp3" : "trimmed.mp4";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  URL.revokeObjectURL(url);
 });
