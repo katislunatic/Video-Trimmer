@@ -22,7 +22,13 @@
     <option value="mp3">.mp3 (audio only)</option>
   </select>
 
-  <button id="trimBtn">Trim & Download</button>
+  <div>
+    <button id="trimBtn">Trim</button>
+    <button id="downloadBtn" disabled>Download</button>
+  </div>
+
+  <h3>Trimmed Preview:</h3>
+  <video id="trimmedPreview" controls style="display:none; width:80%;"></video>
 
   <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/ffmpeg.min.js"></script>
   <script src="script.js"></script>
