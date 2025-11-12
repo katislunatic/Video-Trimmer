@@ -7,28 +7,33 @@ const formatSelect = document.getElementById("formatSelect");
 
 let videoFile;
 let ffmpeg;
+let isFFmpegLoaded = false;
 
-videoUpload.addEventListener("change", (e) => {
-  videoFile = e.target.files[0];
-  if (videoFile) {
-    const url = URL.createObjectURL(videoFile);
-    videoPreview.src = url;
-    videoPreview.onloadedmetadata = () => {
-      startRange.max = videoPreview.duration;
-      endRange.max = videoPreview.duration;
-      endRange.value = videoPreview.duration;
-    };
-  }
-});
-
+// Load FFmpeg properly
 async function loadFFmpeg() {
-  if (!ffmpeg) {
+  if (!isFFmpegLoaded) {
     const { createFFmpeg, fetchFile } = FFmpeg;
     ffmpeg = createFFmpeg({ log: true });
     await ffmpeg.load();
+    isFFmpegLoaded = true;
   }
 }
 
+// Handle video upload
+videoUpload.addEventListener("change", (e) => {
+  videoFile = e.target.files[0];
+  if (!videoFile) return;
+  const url = URL.createObjectURL(videoFile);
+  videoPreview.src = url;
+
+  videoPreview.onloadedmetadata = () => {
+    startRange.max = videoPreview.duration;
+    endRange.max = videoPreview.duration;
+    endRange.value = videoPreview.duration;
+  };
+});
+
+// Handle trim + download
 trimBtn.addEventListener("click", async () => {
   if (!videoFile) return alert("Please upload a video first!");
 
@@ -39,7 +44,8 @@ trimBtn.addEventListener("click", async () => {
   const duration = end - start;
   const outputFormat = formatSelect.value;
 
-  ffmpeg.FS("writeFile", "input.mp4", await fetchFile(videoFile));
+  // Write input file
+  ffmpeg.FS("writeFile", "input.mp4", await FFmpeg.fetchFile(videoFile));
 
   const args = [
     "-ss", `${start}`,
@@ -53,16 +59,28 @@ trimBtn.addEventListener("click", async () => {
     args.push("-c", "copy", "output.mp4");
   }
 
-  await ffmpeg.run(...args);
+  try {
+    await ffmpeg.run(...args);
 
-  const outputName = outputFormat === "mp3" ? "output.mp3" : "output.mp4";
-  const data = ffmpeg.FS("readFile", outputName);
+    const outputName = outputFormat === "mp3" ? "output.mp3" : "output.mp4";
+    const data = ffmpeg.FS("readFile", outputName);
+    const blob = new Blob([data.buffer], {
+      type: outputFormat === "mp3" ? "audio/mpeg" : "video/mp4"
+    });
+    const url = URL.createObjectURL(blob);
 
-  const blob = new Blob([data.buffer], { type: outputFormat === "mp3" ? "audio/mpeg" : "video/mp4" });
-  const url = URL.createObjectURL(blob);
+    // Create download link
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = outputName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
 
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = outputName;
-  a.click();
+    // Cleanup
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("Trimming error:", err);
+    alert("Something went wrong while processing the video. Try a smaller file or shorter clip.");
+  }
 });
